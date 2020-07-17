@@ -146,7 +146,7 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
+// assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SL = 0;
@@ -168,7 +168,7 @@ assign VIDEO_ARY = status[1] ? 8'd9  : 8'd3;
 
 `include "build_id.v"
 localparam CONF_STR = {
-	"MyCore;;",
+	"TomyScramble;;",
 	"-;",
 	"O1,Aspect ratio,4:3,16:9;",
 	"O2,TV Mode,NTSC,PAL;",
@@ -220,18 +220,154 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 
 ///////////////////////   CLOCKS   ///////////////////////////////
 
+wire locked;
 wire clk_sys;
+wire clk_vid;
+wire clk_vfd = clk_div[2];
+reg [2:0] clk_div;
+
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
-	.outclk_0(clk_sys)
+	.outclk_0(clk_sys), // 20
+	.outclk_1(clk_vid), // 25
+	.locked(locked)
 );
+
+always @(posedge clk_sys)
+  clk_div <= clk_div + 3'd1;
 
 wire reset = RESET | status[0] | buttons[1];
 
 //////////////////////////////////////////////////////////////////
 
-//
+wire [24:0] sdram_addr;
+wire [7:0] sdram_data;
+wire sdram_rd;
+
+wire [7:0] vfd_dout;
+wire [7:0] video_data;
+wire [18:0] video_addr;
+wire [18:0] vfd_addr;
+wire vram_we;
+
+wire hsync;
+wire vsync;
+wire hblank;
+wire vblank;
+assign CLK_VIDEO = clk_vid;
+assign VIDEO_ARX = status[1] ? 8'd4 : 8'd16;
+assign VIDEO_ARY = status[1] ? 8'd3: 8'd9;
+wire [7:0] red, green, blue;
+
+wire [3:0] prtAI;
+wire [3:0] prtBI;
+wire [3:0] prtCI;
+wire [3:0] prtDI;
+wire [3:0] prtC;
+wire [3:0] prtD;
+wire [3:0] prtE;
+wire [3:0] prtF;
+wire [3:0] prtG;
+wire [3:0] prtH;
+wire [2:0] prtI;
+
+module mcu(
+	.clk(CLK_50M),
+	.reset(reset),
+	._INT(0),
+	.prtAI(prtAI),
+	.prtBI(prtBI),
+	.prtCI(prtCI),
+	.prtDI(prtDI),
+	.prtC(prtC),
+	.prtD(prtD),
+	.prtE(prtE),
+	.prtF(prtF),
+	.prtG(prtG),
+	.prtH(prtH),
+	.prtI(prtI)
+);
+
+vram vram(
+  .clk(clk_sys),
+  .addr_wr(vfd_addr),
+  .din(vfd_dout),
+  .we(vram_we),
+  .addr_rd(video_addr),
+  .dout(video_data)
+);
+
+vfd vfd(
+	.clk(clk_vfd),
+	.vfd_addr(vfd_addr),
+	.vfd_dout(vfd_dout),
+	.vfd_vram_we(vram_we),
+
+	.sdram_addr(sdram_addr),
+	.sdram_data(sdram_data),
+	.sdram_rd(sdram_rd),
+
+	.C(prtC),
+	.D(prtD),
+	.E(prtE),
+	.F(prtF),
+	.G(prtG),
+	.H(prtH),
+	.I(prtI)
+
+	.rdy(~reset)
+);
+
+
+video video(
+	.clk_vid(clk_vid),
+	.ce_pxl(CE_PIXEL),
+	.hsync(hsync),
+	.vsync(vsync),
+	.hblank(hblank),
+	.vblank(vblank),
+	.red(red),
+	.green(green),
+	.blue(blue),
+	.addr(video_addr),
+	.din(video_data)
+);
+
+
+video_cleaner video_cleaner(
+	.clk_vid(clk_vid),
+	.ce_pix(CE_PIXEL),
+	.R(red),
+	.G(green),
+	.B(blue),
+	.HSync(~hsync),
+	.VSync(~vsync),
+	.HBlank(hblank),
+	.VBlank(vblank),
+	.VGA_R(VGA_R),
+	.VGA_G(VGA_G),
+	.VGA_B(VGA_B),
+	.VGA_VS(VGA_VS),
+	.VGA_HS(VGA_HS),
+	.VGA_DE(VGA_DE)
+);
+
+
+sdram sdram
+(
+	.*, // <= it's bad practice, todo: fix
+	.init(~locked),
+	.clk(clk_sys),
+	.addr(ioctl_download ? ioctl_addr : sdram_addr),
+	.wtbt(0),
+	.dout(sdram_data),
+	.din(ioctl_dout),
+	.rd(sdram_rd),
+	.we(ioctl_wr),
+	.ready()
+);
+
 
 endmodule
