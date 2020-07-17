@@ -257,8 +257,6 @@ wire vsync;
 wire hblank;
 wire vblank;
 assign CLK_VIDEO = clk_vid;
-assign VIDEO_ARX = status[1] ? 8'd4 : 8'd16;
-assign VIDEO_ARY = status[1] ? 8'd3: 8'd9;
 wire [7:0] red, green, blue;
 
 wire [3:0] prtAI;
@@ -273,7 +271,7 @@ wire [3:0] prtG;
 wire [3:0] prtH;
 wire [2:0] prtI;
 
-module mcu(
+ucom43 ucom43(
 	.clk(CLK_50M),
 	.reset(reset),
 	._INT(0),
@@ -291,12 +289,12 @@ module mcu(
 );
 
 vram vram(
-  .clk(clk_sys),
-  .addr_wr(vfd_addr),
-  .din(vfd_dout),
-  .we(vram_we),
-  .addr_rd(video_addr),
-  .dout(video_data)
+	.clk(clk_sys),
+	.addr_wr(vfd_addr),
+	.din(vfd_dout),
+	.we(vram_we),
+	.addr_rd(video_addr),
+	.dout(video_data)
 );
 
 vfd vfd(
@@ -315,7 +313,7 @@ vfd vfd(
 	.F(prtF),
 	.G(prtG),
 	.H(prtH),
-	.I(prtI)
+	.I(prtI),
 
 	.rdy(~reset)
 );
@@ -354,10 +352,10 @@ video_cleaner video_cleaner(
 	.VGA_DE(VGA_DE)
 );
 
-
+// todo: remove ioctl_download, no need, will readmemh
 sdram sdram
 (
-	.*, // <= it's bad practice, todo: fix
+	.*,
 	.init(~locked),
 	.clk(clk_sys),
 	.addr(ioctl_download ? ioctl_addr : sdram_addr),

@@ -15,7 +15,7 @@ module vfd(
 	input [3:0] F,
 	input [3:0] G,
 	input [3:0] H,
-	input [2:0] I
+	input [2:0] I,
 
 	input rdy
 );

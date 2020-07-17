@@ -1,7 +1,7 @@
 /* verilator lint_off UNUSED */
 /* verilator lint_off CASEINCOMPLETE */
 
-module mcu(
+module ucom43(
   input clk,
   input reset,
   input _INT,
@@ -83,7 +83,7 @@ assign pc = { pcf, pcc };
 
 // ROM
 reg [7:0] rom[2047:0];
-initial $readmemh("obj_dir/rom.txt", rom); // <= ROM file here
+initial $readmemh("rom.txt", rom);
 
 // sync for bram support
 always @(posedge clk)
