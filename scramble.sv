@@ -200,6 +200,13 @@ wire  [1:0] buttons;
 wire [31:0] status;
 wire [10:0] ps2_key;
 
+wire			ioctl_wr;
+wire [24:0]	ioctl_addr;
+wire  [7:0]	ioctl_dout;
+wire			ioctl_download;
+wire  [7:0]	ioctl_index;
+wire			ioctl_wait;
+
 hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -214,7 +221,14 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.status(status),
 	.status_menumask({status[5]}),
 
-	.ps2_key(ps2_key)
+	.ps2_key(ps2_key),
+
+	.ioctl_download(ioctl_download),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_dout(ioctl_dout),
+	.ioctl_wait(ioctl_wait),
+	.ioctl_index(ioctl_index)
 );
 
 
@@ -271,8 +285,11 @@ wire [3:0] prtG;
 wire [3:0] prtH;
 wire [2:0] prtI;
 
+wire rom_init = ioctl_download && ioctl_addr >= 2*640*480;
+wire [11:0] rom_init_addr = ioctl_addr - 2*640*480;
+
 ucom43 ucom43(
-	.clk(CLK_50M),
+	.clk(clk_sys),
 	.reset(reset),
 	._INT(0),
 	.prtAI(prtAI),
@@ -285,7 +302,10 @@ ucom43 ucom43(
 	.prtF(prtF),
 	.prtG(prtG),
 	.prtH(prtH),
-	.prtI(prtI)
+	.prtI(prtI),
+	.rom_init(rom_init),
+	.rom_init_data(rom_init_data),
+	.rom_init_addr(rom_init_addr)
 );
 
 vram vram(
@@ -352,7 +372,6 @@ video_cleaner video_cleaner(
 	.VGA_DE(VGA_DE)
 );
 
-// todo: remove ioctl_download, no need, will readmemh
 sdram sdram
 (
 	.*,

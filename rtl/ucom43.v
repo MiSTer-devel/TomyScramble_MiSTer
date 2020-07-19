@@ -17,7 +17,11 @@ module ucom43(
   output [3:0] prtF,
   output [3:0] prtG,
   output [3:0] prtH,
-  output [2:0] prtI
+  output [2:0] prtI,
+  
+  input rom_init,
+  input [7:0] rom_init_data,
+  input [11:0] rom_init_addr
 );
 
 // input ports
@@ -83,7 +87,11 @@ assign pc = { pcf, pcc };
 
 // ROM
 reg [7:0] rom[2047:0];
-initial $readmemh("rom.txt", rom);
+//initial $readmemh("rom.txt", rom);
+
+always @(posedge clk)
+  if (rom_init)
+    rom[rom_init_addr] <= rom_init_data;
 
 // sync for bram support
 always @(posedge clk)
