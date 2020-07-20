@@ -20,11 +20,10 @@ module vfd(
 	input rdy
 );
 
-reg [24:0] old_sdram_addr;
-
 reg [3:0] grid; // col
 always @*
 	case ({ I[1:0], D, C })
+		10'b0000000000: grid = 4'hf;
 		10'b0000000001: grid = 4'd0;
 		10'b0000000010: grid = 4'd1;
 		10'b0000000100: grid = 4'd2;
@@ -38,17 +37,17 @@ always @*
 	endcase
 
 reg [16:0] cache[8:0];
-always @(posedge clk) begin
-	cache[grid] <= { F[3], G[3], F[2], G[2], F[1], G[1], F[0], G[0], H[0], E[0], 1'b1, H[1], E[1], H[2], E[2], H[3], E[3] };
-end
+always @(posedge clk)
+	if (grid != 4'hf)
+		cache[grid] <= { E[3], H[3], E[2], H[2], E[1], H[1], 1'b1, E[0], H[0], G[0], F[0], G[1], F[1], G[2], F[2], G[3], F[3] };
 
 // BG pxl to col/row decoder
 wire [3:0] col = sdram_data[7:4] <= 4'd9 ? sdram_data[7:4] : sdram_data[3:0];
-wire [4:0] row = sdram_data[7:4] == 10 ? 5'd16 : { 1'd0, sdram_data[3:0] };
+wire [4:0] row = sdram_data[7:4] == 4'd10 ? 5'd16 : { 1'd0, sdram_data[3:0] };
 
 reg [2:0] state;
-wire seg_en = cache[col][row];
-
+reg seg_en;
+reg [24:0] sdram_mask_addr;
 
 always @(posedge clk)
 	if (rdy)
@@ -56,8 +55,8 @@ always @(posedge clk)
 
 			3'b000: begin // init
 				vfd_addr <= 0;
-				state <= 3'b001;
 				sdram_addr <= 640*480;
+				state <= 3'b001;
 			end
 
 			3'b001: begin // prepare sdram read mask pxl
@@ -68,44 +67,29 @@ always @(posedge clk)
 
 			3'b010: begin
 				sdram_rd <= 1'b0;
-				old_sdram_addr <= sdram_addr;
-
-				// if it's a segment pixel and status is on
-				// write 0 to vram
-				if (seg_en) begin
-					vfd_vram_we <= 1'b1;
-					vfd_addr <= sdram_addr - 640*480;
-					vfd_dout <= 8'd0;
-					state <= 3'b001; // then read next mask pxl
-				end
-				else begin
-					state <= 3'b011; // if bg or segment is off read bg color
-				end
-
-				if (sdram_addr >= 2*640*480) begin // end? go back to init
-					state <= 3'b000;
-				end
-
+				sdram_mask_addr <= sdram_addr;
+				seg_en <= cache[col][row];
+				state <= 3'b011;
 			end
 
 			3'b011: begin // setup bg read
 				sdram_rd <= 1'b1;
-				sdram_addr <= old_sdram_addr - 640*480; // point to bg
+				sdram_addr <= sdram_addr - 640*480; // point to bg
 				state <= 3'b100;
 			end
 
 			3'b100: begin // read bg color
 				vfd_vram_we <= 1'b1;
 				vfd_addr <= sdram_addr;
-				vfd_dout <= sdram_data;
 				sdram_rd <= 1'b0;
-				sdram_addr <= sdram_addr + 640*480; // fix addr
-				if (sdram_addr >= 640*480) begin // end, go back to init
-					state <= 3'b000;
+				if (seg_en) begin
+					vfd_dout <= sdram_data;
 				end
-				else begin // continue reading mask
-					state <= 3'b001;
-				end
+			 	else begin
+	  				vfd_dout <= { 2'b00, sdram_data[7], 2'b00, sdram_data[4], 1'b0, sdram_data[1] };
+	  			end
+				sdram_addr <= sdram_mask_addr;
+				state <= sdram_addr >= 640*480 ? 3'b000 : 3'b001;
 			end
 
 		endcase

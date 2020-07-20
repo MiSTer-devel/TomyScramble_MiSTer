@@ -159,6 +159,7 @@ assign AUDIO_MIX = 0;
 
 assign LED_DISK = 0;
 assign LED_POWER = 0;
+assign LED_USER = 0;
 assign BUTTONS = 0;
 
 //////////////////////////////////////////////////////////////////
@@ -174,21 +175,7 @@ localparam CONF_STR = {
 	"O2,TV Mode,NTSC,PAL;",
 	"O34,Noise,White,Red,Green,Blue;",
 	"-;",
-	"P1,Test Page 1;",
-	"P1-;",
-	"P1-, -= Options in page 1 =-;",
-	"P1-;",
-	"P1O5,Option 1-1,Off,On;",
-	"d0P1F1,BIN;",
-	"H0P1O6,Option 1-2,Off,On;",
-	"-;",
-	"P2,Test Page 2;",
-	"P2-;",
-	"P2-, -= Options in page 2 =-;",
-	"P2-;",
-	"P2S0,DSK;",
-	"P2O67,Option 2,1,2,3,4;",
-	"-;",
+	"F,rom,Load File;", // remove
 	"-;",
 	"T0,Reset;",
 	"R0,Reset and close OSD;",
@@ -200,12 +187,12 @@ wire  [1:0] buttons;
 wire [31:0] status;
 wire [10:0] ps2_key;
 
-wire			ioctl_wr;
-wire [24:0]	ioctl_addr;
-wire  [7:0]	ioctl_dout;
-wire			ioctl_download;
-wire  [7:0]	ioctl_index;
-wire			ioctl_wait;
+wire [24:0] ioctl_addr;
+wire  [7:0] ioctl_dout;
+wire  [7:0] ioctl_index;
+wire ioctl_wr;
+wire ioctl_download;
+wire ioctl_wait;
 
 hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
@@ -237,6 +224,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 wire locked;
 wire clk_sys;
 wire clk_vid;
+wire clk_mcu;
 wire clk_vfd = clk_div[2];
 reg [2:0] clk_div;
 
@@ -246,13 +234,14 @@ pll pll
 	.rst(0),
 	.outclk_0(clk_sys), // 20
 	.outclk_1(clk_vid), // 25
+	.outclk_2(clk_mcu), // 2
 	.locked(locked)
 );
 
 always @(posedge clk_sys)
   clk_div <= clk_div + 3'd1;
 
-wire reset = RESET | status[0] | buttons[1];
+wire reset = RESET | status[0] | buttons[1] | ioctl_download;
 
 //////////////////////////////////////////////////////////////////
 
@@ -285,11 +274,11 @@ wire [3:0] prtG;
 wire [3:0] prtH;
 wire [2:0] prtI;
 
-wire rom_init = ioctl_download && ioctl_addr >= 2*640*480;
+wire rom_init = ioctl_download & (ioctl_addr >= 2*640*480);
 wire [11:0] rom_init_addr = ioctl_addr - 2*640*480;
 
 ucom43 ucom43(
-	.clk(clk_sys),
+	.clk(clk_mcu),
 	.reset(reset),
 	._INT(0),
 	.prtAI(prtAI),
@@ -303,8 +292,9 @@ ucom43 ucom43(
 	.prtG(prtG),
 	.prtH(prtH),
 	.prtI(prtI),
+	.rom_clk(clk_sys),
 	.rom_init(rom_init),
-	.rom_init_data(rom_init_data),
+	.rom_init_data(ioctl_dout),
 	.rom_init_addr(rom_init_addr)
 );
 

@@ -18,7 +18,8 @@ module ucom43(
   output [3:0] prtG,
   output [3:0] prtH,
   output [2:0] prtI,
-  
+
+  input rom_clk,
   input rom_init,
   input [7:0] rom_init_data,
   input [11:0] rom_init_addr
@@ -63,6 +64,12 @@ always @(posedge clk)
 
 wire clk_en = clk_cnt == 2'b0;
 
+//reg [23:0] clk_cnt;
+//reg clk_en;
+//always @(posedge clk)
+//	{ clk_en, clk_cnt } <= clk_cnt + 24'd335544;
+
+
 reg  [2:0]  pcf        ; // pc field register
 reg  [7:0]  pcc        ; // pc counter
 reg  [2:0]  dph        ; // data pointer high
@@ -89,7 +96,7 @@ assign pc = { pcf, pcc };
 reg [7:0] rom[2047:0];
 //initial $readmemh("rom.txt", rom);
 
-always @(posedge clk)
+always @(posedge rom_clk)
   if (rom_init)
     rom[rom_init_addr] <= rom_init_data;
 
@@ -154,19 +161,22 @@ always @(posedge clk)
 
 // write ram & registers
 always @(posedge clk)
-  if (~we)
-    if (~sel)
+  if (~we) begin
+    if (~sel) begin
       // write to ram
       if (bset[1])
         ram[daddr][din[1:0]] <= bset[0];
       else
         ram[daddr] <= din;
-    else
+    end
+    else begin
       // write to registers
       if (bset[1])
         wr[daddr[2:0]-1][din[1:0]] <= bset[0];
       else
         wr[daddr[2:0]-1] <= din;
+    end
+  end
 
 // ALU
 reg [2:0] alu_op;
