@@ -19,7 +19,7 @@ module ucom43(
   output [3:0] prtH,
   output [2:0] prtI,
 
-  input rom_clk,
+  input clk_sys,
   input rom_init,
   input [7:0] rom_init_data,
   input [11:0] rom_init_addr
@@ -57,18 +57,11 @@ parameter
   SKP = 2'b10, // skip
   WRI = 2'b11; // write ram
 
-// divide the main clock by 4
 reg [1:0] clk_cnt;
 always @(posedge clk)
   clk_cnt <= clk_cnt + 2'b1;
 
-wire clk_en = clk_cnt == 2'b0;
-
-//reg [23:0] clk_cnt;
-//reg clk_en;
-//always @(posedge clk)
-//	{ clk_en, clk_cnt } <= clk_cnt + 24'd335544;
-
+wire clk_mcu = clk_cnt[1];
 
 reg  [2:0]  pcf        ; // pc field register
 reg  [7:0]  pcc        ; // pc counter
@@ -88,25 +81,24 @@ reg         irq        ; // interrupt request
 reg         ien        ; // interrupt enable
 wire [6:0]  dp         ; // data pointer
 wire [10:0] pc         ; // pc
+reg  [3:0]  mask       ; // bit mask
 
 assign dp = { dph, dpl };
 assign pc = { pcf, pcc };
 
 // ROM
 reg [7:0] rom[2047:0];
-//initial $readmemh("rom.txt", rom);
 
-always @(posedge rom_clk)
+always @(posedge clk_sys)
   if (rom_init)
     rom[rom_init_addr] <= rom_init_data;
 
-// sync for bram support
 always @(posedge clk)
   rdat <= rom[pc];
 
 // timer
-always @(posedge clk) begin
-  if (clk_en && opc == 8'b0001_0100 && state == PRM) begin // stm cycle #2
+always @(posedge clk_mcu) begin
+  if (opc == 8'b0001_0100 && state == PRM) begin // stm cycle #2
     pcount <= 6'b0;
     bcount <= rdat[5:0];
     tm <= 1'b0;
@@ -148,7 +140,6 @@ reg  [3:0] mdat       ; // memory data
 reg  [3:0] din        ; // ram data in
 reg  [6:0] waddr      ; // ram write address
 reg        we         ; // write enable, active low
-reg  [1:0] bset       ; // bit set 1x:enabled, x1:set x0:unset
 wire [6:0] daddr      ; // decoded ram write address
 wire       sel        ;
 
@@ -162,20 +153,8 @@ always @(posedge clk)
 // write ram & registers
 always @(posedge clk)
   if (~we) begin
-    if (~sel) begin
-      // write to ram
-      if (bset[1])
-        ram[daddr][din[1:0]] <= bset[0];
-      else
-        ram[daddr] <= din;
-    end
-    else begin
-      // write to registers
-      if (bset[1])
-        wr[daddr[2:0]-1][din[1:0]] <= bset[0];
-      else
-        wr[daddr[2:0]-1] <= din;
-    end
+    if (~sel) ram[daddr] <= din;
+    else wr[daddr[2:0]-1] <= din;
   end
 
 // ALU
@@ -257,267 +236,251 @@ always @*
   endcase
 
 // ram write address
-always @(posedge clk)
-  if (clk_en)
-    if (state == FTC)
-      casez (rdat)
-        8'b011?_11??: waddr <= F_REG; // sfb rfb
-        8'b0100_?010: waddr <= Z_REG; // xaz taz
-        8'b0100_?011: waddr <= W_REG; // xaw taw
-        8'b0100_1100: waddr <= S_REG; // xls
-        8'b0100_1101: waddr <= R_REG; // xhr
-        8'b0100_?110: waddr <= Y_REG; // xly tly
-        8'b0100_?111: waddr <= X_REG; // xhx thx
-        default: waddr <= dp;
-      endcase
+always @(posedge clk_mcu)
+  if (state == FTC)
+    casez (rdat)
+      8'b011?_11??: waddr <= F_REG; // sfb rfb
+      8'b0100_?010: waddr <= Z_REG; // xaz taz
+      8'b0100_?011: waddr <= W_REG; // xaw taw
+      8'b0100_1100: waddr <= S_REG; // xls
+      8'b0100_1101: waddr <= R_REG; // xhr
+      8'b0100_?110: waddr <= Y_REG; // xly tly
+      8'b0100_?111: waddr <= X_REG; // xhx thx
+      default: waddr <= dp;
+    endcase
 
 
 // ram we
 always @(posedge clk) begin
   we <= 1'b1;
-  if (clk_en)
-    case (state)
-      FTC:
-        casez (rdat)
-          8'b0001_11?1, // inm dem
-          8'b0000_0010, // s
-          8'b0010_1???, // xm xmd
-          8'b0011_11??, // xmi
-          8'b0100_??1?, // 8 T&X (ZWYX)
-          8'b0100_110?, // xhr xls
-          8'b011?_1???: we <= 1'b0; // smb rmb sfb rfb
-          default: we <= 1'b1;
-        endcase
-    endcase
+  if (clk_mcu)
+	  case (state)
+		 FTC:
+			casez (opc)
+			  8'b0001_11?1, // inm dem
+			  8'b0000_0010, // s
+			  8'b0010_1???, // xm xmd
+			  8'b0011_11??, // xmi
+			  8'b0100_??1?, // 8 T&X (ZWYX)
+			  8'b0100_110?, // xhr xls
+			  8'b011?_1???: we <= 1'b0; // smb rmb sfb rfb
+			  default: we <= 1'b1;
+			endcase
+		 default: we <= 1'b1;
+	  endcase
 end
 
-
 // ram din
-always @(posedge clk)
-  if (clk_en)
-    if (state == FTC)
-      casez	(rdat)
-        8'b0001_1101, // inm
-        8'b0001_1111: din <= alu_r; // dem
-        8'b0000_0010, // s
-        8'b0010_10??, // xm
-        8'b001?_11??, // xmi xmd
-        8'b0100_101?, // xaz xaw
-        8'b0100_001?: din <= acc; // taz taw
-        8'b0100_?111, // xhx thx
-        8'b0100_1101: din <= { 1'b0, dph }; // xhr
-        8'b0100_?110, // xly tly
-        8'b0100_1100: din <= dpl; // xls
-        8'b011?_1???: din <= { 2'b0, rdat[1:0] }; // smb rmb sfb rfb
-        default: din <= 4'b0;
-      endcase
-
-// bit set
-always @(posedge clk)
-  if (clk_en)
-    if (state == FTC)
-      casez (rdat)
-        8'b0111_1???: bset <= 2'b11; // smb sfb
-        8'b0110_1???: bset <= 2'b10; // rmb rfb
-        default: bset <= 2'b00;
-      endcase
+always @(posedge clk_mcu)
+  if (state == FTC)
+    casez	(rdat)
+      8'b0001_1101, // inm
+      8'b0001_1111: din <= alu_r; // dem
+      8'b0000_0010, // s
+      8'b0010_10??, // xm
+      8'b001?_11??, // xmi xmd
+      8'b0100_101?, // xaz xaw
+      8'b0100_001?: din <= acc; // taz taw
+      8'b0100_?111, // xhx thx
+      8'b0100_1101: din <= { 1'b0, dph }; // xhr
+      8'b0100_?110, // xly tly
+      8'b0100_1100: din <= dpl; // xls
+		  8'b0111_1???: din <= mdat | mask; // smb sfb
+      8'b0110_1???: din <= mdat & ~mask; // rmb rfb
+      default: din <= 4'b0;
+    endcase
 
 // dph
-always @(posedge clk)
-  if (clk_en)
-    case (state)
-      PRM:
-        if (opc == 8'b0001_0101) // ldi
-          dph <= rdat[6:4];
-      FTC:
-        casez (rdat)
-          8'b001?_1???: dph[1:0] <= dph[1:0] ^ rdat[1:0]; // l lm x xm xd xmd xi xmi
-          8'b1000_????: dph <= 0; // ldz
-          8'b0100_1111: dph <= X[2:0]; // xhx
-          8'b0100_1101: dph <= R[2:0]; // xhr
-        endcase
-    endcase
+always @(posedge clk_mcu)
+  case (state)
+    PRM:
+      if (opc == 8'b0001_0101) // ldi
+        dph <= rdat[6:4];
+    FTC:
+      casez (rdat)
+        8'b001?_1???: dph[1:0] <= dph[1:0] ^ rdat[1:0]; // l lm x xm xd xmd xi xmi
+        8'b1000_????: dph <= 0; // ldz
+        8'b0100_1111: dph <= X[2:0]; // xhx
+        8'b0100_1101: dph <= R[2:0]; // xhr
+      endcase
+  endcase
 
 // dpl
-always @(posedge clk)
-  if (clk_en)
-    case (state)
-      PRM:
-        if (opc == 8'b0001_0101) // ldi
-          dpl <= rdat[3:0];
-      FTC:
-        casez (rdat)
-          8'b001?_11??, // xd xmd xi xmi
-          8'b00?1_0011: dpl <= alu_r; // ded ind
-          8'b1000_????: dpl <= rdat[3:0]; // ldz
-          8'b0100_1110: dpl <= Y; // xly
-          8'b0000_0111: dpl <= acc; // tal
-          8'b0100_1100: dpl <= S; // xls
-        endcase
-    endcase
+always @(posedge clk_mcu)
+  case (state)
+    PRM:
+      if (opc == 8'b0001_0101) // ldi
+        dpl <= rdat[3:0];
+    FTC:
+      casez (rdat)
+        8'b001?_11??, // xd xmd xi xmi
+        8'b00?1_0011: dpl <= alu_r; // ded ind
+        8'b1000_????: dpl <= rdat[3:0]; // ldz
+        8'b0100_1110: dpl <= Y; // xly
+        8'b0000_0111: dpl <= acc; // tal
+        8'b0100_1100: dpl <= S; // xls
+      endcase
+  endcase
 
 
 // accumulator, carry & carry save
-always @(posedge clk)
-  if (clk_en)
-    case (state)
-      FTC:
-        casez (rdat)
-          8'b0000_1011: c <= 0; // clc
-          8'b0001_1011: c <= 1; // stc
-          8'b0001_0000, // cma
-          8'b0001_0001, // cia
-          8'b0000_11?1, // inc dec
-          8'b0000_0110, // daa
-          8'b0000_1010, // das
-          8'b0000_1000, // ad
-          8'b0001_1000: acc <= alu_r; // exl
-          8'b0001_1010: { c, cs } <= { cs, c }; // xc
-          8'b0011_0000: { acc, c } <= { c, acc }; // rar
-          8'b000?_1001: { c, acc } <= { alu_c, alu_r }; // ads adc
-          8'b1001_????: // cla & li
-            if (opc[7:4] != rdat[7:4]) // skip consecutive
-              acc <= rdat[3:0];
-          8'b0011_10??, // l lm
-          8'b0010_10??, // x xm
-          8'b0010_11??, // xd xmd
-          8'b0011_11??: acc <= mdat; // xi xmi
-          8'b0001_0010: acc <= dpl; // tla
-          8'b0100_1010: acc <= Z; // xaz
-          8'b0100_1011: acc <= W; // xaw
-          8'b0100_0000: acc <= prtAI; // ia
-          8'b0011_0010: // ip
-            if (dpl[3:2] == 2'b0)
-              acc <= i_ports[dpl[1:0]];
-            else
-              acc <= o_ports[dpl];
-        endcase
-    endcase
+always @(posedge clk_mcu)
+  case (state)
+    FTC:
+      casez (rdat)
+        8'b0000_1011: c <= 0; // clc
+        8'b0001_1011: c <= 1; // stc
+        8'b0001_0000, // cma
+        8'b0001_0001, // cia
+        8'b0000_11?1, // inc dec
+        8'b0000_0110, // daa
+        8'b0000_1010, // das
+        8'b0000_1000, // ad
+        8'b0001_1000: acc <= alu_r; // exl
+        8'b0001_1010: { c, cs } <= { cs, c }; // xc
+        8'b0011_0000: { acc, c } <= { c, acc }; // rar
+        8'b000?_1001: { c, acc } <= { alu_c, alu_r }; // ads adc
+        8'b1001_????: // cla & li
+          if (opc[7:4] != rdat[7:4]) // skip consecutive
+            acc <= rdat[3:0];
+        8'b0011_10??, // l lm
+        8'b0010_10??, // x xm
+        8'b0010_11??, // xd xmd
+        8'b0011_11??: acc <= mdat; // xi xmi
+        8'b0001_0010: acc <= dpl; // tla
+        8'b0100_1010: acc <= Z; // xaz
+        8'b0100_1011: acc <= W; // xaw
+        8'b0100_0000: acc <= prtAI; // ia
+        8'b0011_0010: // ip
+          if (dpl[3:2] == 2'b0)
+            acc <= i_ports[dpl[1:0]];
+          else
+            acc <= o_ports[dpl];
+      endcase
+  endcase
 
 // stack
-always @(posedge clk)
-  if (clk_en) begin
-    case (state)
-      FTC:
-        casez (rdat)
-          8'b1011_????: stack[sp] <= pc + 11'd1; // czp
-          8'b1010_1???: stack[sp] <= pc + 11'd2; // cal
-        endcase
-    endcase
-    if (~_INT && ien && irq)
-      stack[sp] <= pc + 11'b1;
-  end
+always @(posedge clk_mcu) begin
+  case (state)
+    FTC:
+      casez (rdat)
+        8'b1011_????: stack[sp] <= pc + 11'd1; // czp
+        8'b1010_1???: stack[sp] <= pc + 11'd2; // cal
+      endcase
+  endcase
+  if (~_INT && ien && irq) stack[sp] <= pc + 11'b1;
+end
 
+always @*
+  case (rdat[1:0])
+    2'd0: mask = 4'b0001;
+    2'd1: mask = 4'b0010;
+    2'd2: mask = 4'b0100;
+    2'd3: mask = 4'b1000;
+  endcase
 
 // ports
-always @(posedge clk)
-  if (clk_en)
-    if (state == PRM && opc == 8'b0001_1110) // ocd
-      { o_ports[PORT_D], o_ports[PORT_C] } <= rdat;
-    else if (state == FTC)
-      casez (rdat)
-        8'b0111_01??: o_ports[PORT_E][rdat[1:0]] <= 1'b1; // seb
-        8'b0110_01??: o_ports[PORT_E][rdat[1:0]] <= 1'b0; // reb
-        8'b0111_00??: o_ports[dpl][rdat[1:0]] <= 1'b1; // spb
-        8'b0110_00??: o_ports[dpl][rdat[1:0]] <= 1'b0; // rpb
-        8'b0100_0100: o_ports[PORT_E] <= acc; // oe
-        8'b0000_1110: o_ports[dpl] <= acc; // op
-      endcase
+always @(posedge clk_mcu)
+  if (state == PRM && opc == 8'b0001_1110) // ocd
+    { o_ports[PORT_D], o_ports[PORT_C] } <= rdat;
+  else if (state == FTC)
+    casez (rdat)
+      8'b0111_01??: o_ports[PORT_E] <= o_ports[PORT_E] | mask; // seb
+      8'b0110_01??: o_ports[PORT_E] <= o_ports[PORT_E] & ~mask; // reb
+      8'b0111_00??: o_ports[dpl] <= o_ports[dpl] | mask; // spb
+      8'b0110_00??: o_ports[dpl] <= o_ports[dpl] & ~mask; // rpb
+      8'b0100_0100: o_ports[PORT_E] <= acc; // oe
+      8'b0000_1110: o_ports[dpl] <= acc; // op
+    endcase
 
 // FSM
-always @(posedge clk)
-  if (clk_en) begin
-    state <= FTC; // <= most are one clk instructions
-    case (state)
+always @(posedge clk_mcu) begin
+  state <= FTC; // <= most are one clk instructions
+  case (state)
 
-      PRM: begin
-        casez (opc)
-          8'b0001_0111: if (acc == rdat[3:0]) state <= SKP; // ci
-          8'b0001_0110: if (dpl == rdat[3:0]) state <= SKP; // cli
-          8'b0100_1001: state <= SKP; // rts
-        endcase
-      end
+    PRM: begin
+      casez (opc)
+        8'b0001_0111: if (acc == rdat[3:0]) state <= SKP; // ci
+        8'b0001_0110: if (dpl == rdat[3:0]) state <= SKP; // cli
+        8'b0100_1001: state <= SKP; // rts
+      endcase
+    end
 
-      FTC: begin
-        casez (rdat)
-          8'b0000_11?1, // inc dec
-          8'b0001_11?1, // inm dem
-          8'b0000_100?, // ad ads
-          8'b00?1_0011, // ded ind
-          8'b001?_11??, // xd xmd xi xmi
-          8'b0101_10??, // tmb
-          8'b0101_01??, // tpa
-          8'b0010_01??, // tab
-          8'b0101_00??, // tpb
-          8'b0101_11??: if (alu_c) state <= SKP; // fbt
-          8'b0010_00??: if (~alu_c) state <= SKP; // fbf
-          8'b0100_110?, // xls xhr
-          8'b0100_001?, // taz taw
-          8'b0100_101?, // xaz xaw
-          8'b0100_011?, // thx tly
-          8'b0100_111?: state <= WRI; // xhx xly
-          8'b0011_01??: if (mdat[rdat[1:0]] == acc[rdat[1:0]]) state <= SKP; // cmb
-          8'b0000_1100: if (acc == mdat) state <= SKP; // cm
-          8'b0000_0100: if (c) state <= SKP; // tc
-          8'b0000_0101: if (tm) state <= SKP; // ttm
-          8'b0000_0011: if (irq) state <= SKP; // tit
-          8'b1010_1???, // cal
-          8'b0100_100?, // rt rts
-          8'b0100_0001, // jpa
-          8'b1010_0???, // jmp
-          8'b0001_011?, // ci cli
-          8'b0001_1110, // ocd
-          8'b0001_0100, // stm
-          8'b0001_0101: state <= PRM; // ldi
-        endcase
-      end
+    FTC: begin
+      casez (rdat)
+        8'b0000_11?1, // inc dec
+        8'b0001_11?1, // inm dem
+        8'b0000_100?, // ad ads
+        8'b00?1_0011, // ded ind
+        8'b001?_11??, // xd xmd xi xmi
+        8'b0101_10??, // tmb
+        8'b0101_01??, // tpa
+        8'b0010_01??, // tab
+        8'b0101_00??, // tpb
+        8'b0101_11??: if (alu_c) state <= SKP; // fbt
+        8'b0010_00??: if (~alu_c) state <= SKP; // fbf
+        8'b0100_110?, // xls xhr
+        8'b0100_001?, // taz taw
+        8'b0100_101?, // xaz xaw
+        8'b0100_011?, // thx tly
+        8'b0100_111?: state <= WRI; // xhx xly
+        8'b0011_01??: if (mdat[rdat[1:0]] == acc[rdat[1:0]]) state <= SKP; // cmb
+        8'b0000_1100: if (acc == mdat) state <= SKP; // cm
+        8'b0000_0100: if (c) state <= SKP; // tc
+        8'b0000_0101: if (tm) state <= SKP; // ttm
+        8'b0000_0011: if (irq) state <= SKP; // tit
+        8'b1010_1???, // cal
+        8'b0100_100?, // rt rts
+        8'b0100_0001, // jpa
+        8'b1010_0???, // jmp
+        8'b0001_011?, // ci cli
+        8'b0001_1110, // ocd
+        8'b0001_0100, // stm
+        8'b0001_0101: state <= PRM; // ldi
+      endcase
+    end
 
-    endcase
-  end
+  endcase
+end
 
 // stack pointer
-always @(posedge clk)
-  if (clk_en) begin
-    case (state)
-      PRM:
-        case (opc)
-          8'b0100_1001, // rts
-          8'b0100_1000: // rt
-            case (sp)
-              2'd0: sp <= 2'd2;
-              2'd1: sp <= 2'd0;
-              2'd2: sp <= 2'b1;
-            endcase
-        endcase
-      FTC:
-        casez (rdat)
-          8'b1011_????, // czp
-          8'b1010_1???: // cal
-            case (sp)
-              2'd0: sp <= 2'd1;
-              2'd1: sp <= 2'd2;
-              2'd2: sp <= 2'd0;
-            endcase
-        endcase
-    endcase
-    if (~_INT && ien && irq)
-      sp <= sp + 2'b1;
-  end
+always @(posedge clk_mcu) begin
+  case (state)
+    PRM:
+      case (opc)
+        8'b0100_1001, // rts
+        8'b0100_1000: // rt
+          case (sp)
+            2'd0: sp <= 2'd2;
+            2'd1: sp <= 2'd0;
+            2'd2: sp <= 2'b1;
+          endcase
+      endcase
+    FTC:
+      casez (rdat)
+        8'b1011_????, // czp
+        8'b1010_1???: // cal
+          case (sp)
+            2'd0: sp <= 2'd1;
+            2'd1: sp <= 2'd2;
+            2'd2: sp <= 2'd0;
+          endcase
+      endcase
+  endcase
+  if (~_INT && ien && irq) sp <= sp + 2'b1;
+end
 
 // opc
-always @(posedge clk)
-  if (clk_en)
-    if (state == FTC)
-      opc <= rdat;
+always @(posedge clk_mcu)
+  if (state == FTC) opc <= rdat;
 
 // ien
-always @(posedge clk)
-  if (clk_en)
-    if (state == FTC)
-      case (rdat)
-        8'b0011_0001: ien <= 1'b1;
-        8'b0000_0001: ien <= 1'b0;
-      endcase
+always @(posedge clk_mcu)
+  if (state == FTC)
+    case (rdat)
+      8'b0011_0001: ien <= 1'b1;
+      8'b0000_0001: ien <= 1'b0;
+    endcase
 
 // irq
 always @(posedge clk) begin
@@ -528,8 +491,8 @@ end
 
 
 // pc
-always @(posedge clk)
-  if (clk_en && ~reset) begin
+always @(posedge clk_mcu)
+  if (~reset) begin
 
     pcc <= pcc + 8'd1;
 
@@ -566,7 +529,6 @@ always @(posedge clk)
 
   end
 
-  else if (reset)
-    { pcf, pcc } <= 11'b0;
+  else if (reset) { pcf, pcc } <= 11'b0;
 
 endmodule

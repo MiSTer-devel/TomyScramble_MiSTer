@@ -184,6 +184,7 @@ localparam CONF_STR = {
 
 wire forced_scandoubler;
 wire  [1:0] buttons;
+wire [15:0] joystick_0;
 wire [31:0] status;
 wire [10:0] ps2_key;
 
@@ -204,6 +205,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.conf_str(CONF_STR),
 	.forced_scandoubler(forced_scandoubler),
 
+	.joystick_0(joystick_0),
 	.buttons(buttons),
 	.status(status),
 	.status_menumask({status[5]}),
@@ -224,7 +226,6 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 wire locked;
 wire clk_sys;
 wire clk_vid;
-wire clk_mcu;
 wire clk_vfd = clk_div[2];
 reg [2:0] clk_div;
 
@@ -232,14 +233,18 @@ pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
-	.outclk_0(clk_sys), // 20
+	.outclk_0(clk_sys), // 100
 	.outclk_1(clk_vid), // 25
-	.outclk_2(clk_mcu), // 2
 	.locked(locked)
 );
 
 always @(posedge clk_sys)
   clk_div <= clk_div + 3'd1;
+
+reg [23:0] clk_cnt;
+reg clk_mcu;
+always @(posedge clk_sys)
+	{ clk_mcu, clk_cnt } <= clk_cnt + 24'd67108; // 2^24/(100/0.4)=67108
 
 wire reset = RESET | status[0] | buttons[1] | ioctl_download;
 
@@ -262,10 +267,10 @@ wire vblank;
 assign CLK_VIDEO = clk_vid;
 wire [7:0] red, green, blue;
 
-wire [3:0] prtAI;
-wire [3:0] prtBI;
-wire [3:0] prtCI;
-wire [3:0] prtDI;
+wire [3:0] prtAI = { 2'b11, joystick_0[4], 1'b0 };
+wire [3:0] prtBI = { 2'b11, joystick_0[2], joystick_0[3] };
+wire [3:0] prtCI = 0;
+wire [3:0] prtDI = 0;
 wire [3:0] prtC;
 wire [3:0] prtD;
 wire [3:0] prtE;
@@ -292,7 +297,8 @@ ucom43 ucom43(
 	.prtG(prtG),
 	.prtH(prtH),
 	.prtI(prtI),
-	.rom_clk(clk_sys),
+	// rom injection
+	.clk_sys(clk_sys),
 	.rom_init(rom_init),
 	.rom_init_data(ioctl_dout),
 	.rom_init_addr(rom_init_addr)

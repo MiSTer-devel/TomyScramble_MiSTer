@@ -23,7 +23,6 @@ module vfd(
 reg [3:0] grid; // col
 always @*
 	case ({ I[1:0], D, C })
-		10'b0000000000: grid = 4'hf;
 		10'b0000000001: grid = 4'd0;
 		10'b0000000010: grid = 4'd1;
 		10'b0000000100: grid = 4'd2;
@@ -34,6 +33,7 @@ always @*
 		10'b0010000000: grid = 4'd7;
 		10'b0100000000: grid = 4'd8;
 		10'b1000000000: grid = 4'd9;
+		default: grid = 4'hf;
 	endcase
 
 reg [16:0] cache[8:0];
