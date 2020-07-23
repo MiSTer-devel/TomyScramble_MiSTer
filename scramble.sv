@@ -146,16 +146,12 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-// assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SL = 0;
 assign VGA_F1 = 0;
 
 assign AUDIO_S = 0;
-assign AUDIO_L = 0;
-assign AUDIO_R = 0;
-assign AUDIO_MIX = 0;
 
 assign LED_DISK = 0;
 assign LED_POWER = 0;
@@ -227,7 +223,10 @@ wire locked;
 wire clk_sys;
 wire clk_vid;
 wire clk_vfd = clk_div[2];
+reg  clk_mcu;
+
 reg [2:0] clk_div;
+reg [23:0] clk_cnt;
 
 pll pll
 (
@@ -241,8 +240,6 @@ pll pll
 always @(posedge clk_sys)
   clk_div <= clk_div + 3'd1;
 
-reg [23:0] clk_cnt;
-reg clk_mcu;
 always @(posedge clk_sys)
 	{ clk_mcu, clk_cnt } <= clk_cnt + 24'd67108; // 2^24/(100/0.4)=67108
 
@@ -266,11 +263,12 @@ wire hblank;
 wire vblank;
 assign CLK_VIDEO = clk_vid;
 wire [7:0] red, green, blue;
+reg pro = 0;
 
-wire [3:0] prtAI = { 2'b11, joystick_0[4], 1'b0 };
+wire [3:0] prtAI = { joystick_0[4], joystick_0[4], joystick_0[4], pro };
 wire [3:0] prtBI = { 2'b11, joystick_0[2], joystick_0[3] };
-wire [3:0] prtCI = 0;
-wire [3:0] prtDI = 0;
+wire [3:0] prtCI;
+wire [3:0] prtDI;
 wire [3:0] prtC;
 wire [3:0] prtD;
 wire [3:0] prtE;
@@ -281,6 +279,11 @@ wire [2:0] prtI;
 
 wire rom_init = ioctl_download & (ioctl_addr >= 2*640*480);
 wire [11:0] rom_init_addr = ioctl_addr - 2*640*480;
+
+wire audio = { prtI[2], 15'd0 };
+assign AUDIO_L = audio;
+assign AUDIO_R = audio;
+assign AUDIO_MIX = 2'd3;
 
 ucom43 ucom43(
 	.clk(clk_mcu),
