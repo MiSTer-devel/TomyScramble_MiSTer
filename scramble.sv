@@ -241,7 +241,7 @@ always @(posedge clk_sys)
   clk_div <= clk_div + 3'd1;
 
 always @(posedge clk_sys)
-	{ clk_mcu, clk_cnt } <= clk_cnt + 24'd67108; // 2^24/(100/0.4)=67108
+	{ clk_mcu, clk_cnt } <= clk_cnt + 24'd58867;
 
 wire reset = RESET | status[0] | buttons[1] | ioctl_download;
 
@@ -280,9 +280,8 @@ wire [2:0] prtI;
 wire rom_init = ioctl_download & (ioctl_addr >= 2*640*480);
 wire [11:0] rom_init_addr = ioctl_addr - 2*640*480;
 
-wire audio = { prtI[2], 15'd0 };
-assign AUDIO_L = audio;
-assign AUDIO_R = audio;
+assign AUDIO_L = { prtI[2], 15'd0 };
+assign AUDIO_R = { prtI[2], 15'd0 };
 assign AUDIO_MIX = 2'd3;
 
 ucom43 ucom43(
