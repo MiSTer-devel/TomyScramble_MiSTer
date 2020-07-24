@@ -1,5 +1,3 @@
-/* verilator lint_off UNUSED */
-/* verilator lint_off CASEINCOMPLETE */
 
 module ucom43(
   input clk,
@@ -34,7 +32,7 @@ assign i_ports[2] = prtCI;
 assign i_ports[3] = prtDI;
 
 
-// output ports (ab unconnected)CDEFGHI
+// output ports (AB unconnected)CDEFGHI
 reg [3:0] o_ports[8:0];
 
 assign prtC = o_ports[2];
@@ -98,17 +96,19 @@ always @(posedge clk)
 
 // timer
 always @(posedge clk) begin
-  if (clk_mcu && opc == 8'b0001_0100 && state == PRM) begin // stm cycle #2
-    pcount <= 6'b0;
-    bcount <= rdat[5:0];
-    tm <= 1'b0;
-  end
-  else if (~tm) begin
-    if (pcount == 6'b111111) begin
-      if (bcount == 6'b0) tm <= 1'b1; // stop
-      bcount <= bcount - 6'b1;
-    end
-    pcount <= pcount + 6'b1;
+  if (clk_mcu) begin
+	  if (opc == 8'b0001_0100 && state == PRM) begin // stm cycle #2
+      pcount <= 6'b0;
+      bcount <= rdat[5:0];
+      tm <= 1'b0;
+	  end
+	  else if (~tm) begin
+      if (pcount == 6'b111111) begin
+        if (bcount == 6'b0) tm <= 1'b1; // stop
+        bcount <= bcount - 6'b1;
+      end
+      pcount <= pcount + 6'b1;
+	  end
   end
 end
 
@@ -172,7 +172,7 @@ always @* begin
     2: { alu_c, alu_r } = alu_a + 4'b1;
     3: { alu_c, alu_r } = alu_a - 4'b1;
     4: alu_r = alu_a ^ alu_b;
-    5: alu_c = (alu_a & mask) != 0 ? 1'b1 : 1'b0; //alu_a[alu_b[1:0]];
+    5: alu_c = (alu_a & mask) != 0 ? 1'b1 : 1'b0;
     6: alu_r = alu_a + 4'd6;
     7: alu_r = alu_a + 4'd10;
   endcase
@@ -400,7 +400,7 @@ always @(posedge clk)
 // FSM
 always @(posedge clk)
   if (clk_mcu) begin
-    state <= FTC; // <= most are one clk instructions
+    state <= FTC;
     case (state)
 
       PRM: begin

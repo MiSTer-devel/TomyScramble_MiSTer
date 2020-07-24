@@ -241,7 +241,7 @@ always @(posedge clk_sys)
   clk_div <= clk_div + 3'd1;
 
 always @(posedge clk_sys)
-	{ clk_mcu, clk_cnt } <= clk_cnt + 24'd58867;
+	{ clk_mcu, clk_cnt } <= clk_cnt + 24'd67108;
 
 wire reset = RESET | status[0] | buttons[1] | ioctl_download;
 

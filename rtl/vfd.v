@@ -49,13 +49,15 @@ reg [2:0] state;
 reg seg_en;
 reg [24:0] sdram_mask_addr;
 
+parameter SCREEN_SIZE = 25'd307200; //640x480
+
 always @(posedge clk)
 	if (rdy)
 		case (state)
 
 			3'b000: begin // init
 				vfd_addr <= 0;
-				sdram_addr <= 640*480;
+				sdram_addr <= SCREEN_SIZE;
 				state <= 3'b001;
 			end
 
@@ -74,7 +76,7 @@ always @(posedge clk)
 
 			3'b011: begin // setup bg read
 				sdram_rd <= 1'b1;
-				sdram_addr <= sdram_addr - 640*480; // point to bg
+				sdram_addr <= sdram_addr - SCREEN_SIZE; // point to bg
 				state <= 3'b100;
 			end
 
@@ -89,7 +91,7 @@ always @(posedge clk)
 	  				vfd_dout <= { 2'b00, sdram_data[7], 2'b00, sdram_data[4], 1'b0, sdram_data[1] };
 	  			end
 				sdram_addr <= sdram_mask_addr;
-				state <= sdram_addr >= 640*480 ? 3'b000 : 3'b001;
+				state <= sdram_addr >= SCREEN_SIZE ? 3'b000 : 3'b001;
 			end
 
 		endcase
