@@ -36,11 +36,28 @@ always @*
 		default: grid = 4'hf;
 	endcase
 
-reg [16:0] cache[8:0];
-always @(posedge clk)
-	if (grid != 4'hf)
+reg [16:0] cache[9:0];
+reg [18:0] cache_duration;
+always @(posedge clk) begin
+	cache_duration <= cache_duration - 4'd1;
+	if (grid != 4'hf) begin
+		cache_duration <= 19'h7ffff;
 		cache[grid] <= { E[3], H[3], E[2], H[2], E[1], H[1], 1'b1, E[0], H[0], G[0], F[0], G[1], F[1], G[2], F[2], G[3], F[3] };
-
+	end
+	if (cache_duration == 19'd0) begin
+		cache[0] <= 17'd0;
+		cache[1] <= 17'd0;
+		cache[2] <= 17'd0;
+		cache[3] <= 17'd0;
+		cache[4] <= 17'd0;
+		cache[5] <= 17'd0;
+		cache[6] <= 17'd0;
+		cache[7] <= 17'd0;
+		cache[8] <= 17'd0;
+		cache[9] <= 17'd0;
+	end
+end
+		
 // BG pxl to col/row decoder
 wire [3:0] col = sdram_data[7:4] <= 4'd9 ? sdram_data[7:4] : sdram_data[3:0];
 wire [4:0] row = sdram_data[7:4] == 4'd10 ? 5'd16 : { 1'd0, sdram_data[3:0] };

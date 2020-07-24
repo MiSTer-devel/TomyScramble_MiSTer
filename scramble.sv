@@ -160,16 +160,15 @@ assign BUTTONS = 0;
 
 //////////////////////////////////////////////////////////////////
 
-assign VIDEO_ARX = status[1] ? 8'd16 : 8'd4;
-assign VIDEO_ARY = status[1] ? 8'd9  : 8'd3;
+assign VIDEO_ARX = status[1] ? 8'd4 : 8'd16;
+assign VIDEO_ARY = status[1] ? 8'd3 : 8'd9;
 
 `include "build_id.v"
 localparam CONF_STR = {
 	"TomyScramble;;",
 	"-;",
-	"O1,Aspect ratio,4:3,16:9;",
-	"O2,TV Mode,NTSC,PAL;",
-	"O34,Noise,White,Red,Green,Blue;",
+	"O1,Aspect ratio,original,4:3;",
+	"O2,Mode,Ama,Pro;",
 	"-;",
 	"F,rom,Load File;", // remove
 	"-;",
@@ -263,7 +262,7 @@ wire hblank;
 wire vblank;
 assign CLK_VIDEO = clk_vid;
 wire [7:0] red, green, blue;
-reg pro = 0;
+wire pro = status[2];
 
 wire [3:0] prtAI = { joystick_0[4], joystick_0[4], joystick_0[4], pro };
 wire [3:0] prtBI = { 2'b11, joystick_0[2], joystick_0[3] };
